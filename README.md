@@ -209,19 +209,6 @@ OpusBox/
 
 Compiled Windows builds are best published through **GitHub Releases** rather than committed directly to the source tree.
 
-## Future Ideas
-
-- Duplicate detection
-- Prefer genuine lossless copies over lossy duplicates
-- Prefer studio versions over live versions
-- Duplicate review screen
-- Separate playlist-position and completed-track progress
-- Better exact Picard success/failure reporting
-- Detect removed online playlist items without automatically deleting local files
-- Optional FLAC source lookup before falling back to YouTube Opus
-- Library health scanning
-- Automatic metadata validation
-
 ## License
 
 MIT License. See `LICENSE`.
