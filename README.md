@@ -1,218 +1,150 @@
+# OpusBox README Update
+
 # OpusBox
 
-A Windows GUI for downloading and syncing YouTube / YouTube Music playlists as Opus using yt-dlp, with resume protection, watchdog recovery, and optional MusicBrainz Picard integration.
+OpusBox is a Windows desktop app for downloading YouTube and YouTube Music playlists as Opus audio files and optionally tagging them with MusicBrainz Picard.
+
+It is designed around large music libraries, resumable downloads, automatic recovery, and a simple desktop workflow.
 
 ## Features
 
-- YouTube and YouTube Music playlist support
-- Automatically resolves `music.youtube.com` playlist links
-- Downloads YouTube audio as Opus
-- Resume support using yt-dlp download archives
-- Skips tracks that were already completed
-- Automatic retry handling
-- 20-second network socket timeout
-- 3-minute no-progress watchdog
-- Automatically restarts yt-dlp after a detected stall
-- Maximum of 3 watchdog restarts to prevent infinite loops
-- Failed-track reporting
-- Live completed-track progress
-- Shows the most recently completed playlist item
-- Optional MusicBrainz Picard integration
-- Batch tagging workflow for large playlists
-- "Tag Existing Music" workflow for already-downloaded Opus files
-- Settings saved under `%APPDATA%\OpusBox`
+* Download full YouTube and YouTube Music playlists
+* Output audio as Opus
+* Embed metadata and artwork
+* Resume interrupted downloads
+* Automatically retry missed tracks
+* Detect and recover tracks skipped during the first download pass
+* Optional MusicBrainz Picard tagging
+* Sequential Picard batch processing for large libraries
+* Automatic tagging logs
+* YouTube cookie authentication support
+* Duplicate prevention using YouTube video IDs
+* Detailed unresolved-track and duplicate-track reports
 
-## How It Works
+## Download Workflow
 
-Typical workflow:
+OpusBox first downloads the playlist normally using yt-dlp.
 
-```text
-YouTube / YouTube Music
-        ↓
-      OpusBox
-        ↓
-      yt-dlp
-        ↓
-   Opus audio files
-        ↓
-MusicBrainz Picard (optional)
-        ↓
- Local music library
-```
+Completed downloads are recorded in a resume archive so future runs can skip tracks that were already downloaded.
 
-For YouTube Music URLs, OpusBox lets yt-dlp resolve the corresponding regular YouTube playlist URL and then continues the normal workflow.
+After the main download pass finishes, OpusBox checks which playlist tracks are actually present on disk.
 
-## Requirements
+If tracks are missing, OpusBox automatically performs a targeted second pass containing only the missing tracks.
 
-- Windows
-- Windows PowerShell
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- [FFmpeg](https://ffmpeg.org/)
-- [MusicBrainz Picard](https://picard.musicbrainz.org/) (optional)
+This second pass bypasses stale archive entries so a track can still be recovered even if yt-dlp previously marked it as downloaded.
 
-OpusBox was originally built around the yt-dlp and FFmpeg binaries installed by Stacher, but paths can be configured in the application.
+## Duplicate Protection
 
-Typical Stacher paths:
+Beginning with v0.3.18, OpusBox uses the YouTube video ID as the identity of a track instead of relying only on playlist position.
 
-```text
-C:\Users\<username>\.stacher\yt-dlp.exe
-C:\Users\<username>\.stacher\ffmpeg.exe
-C:\Users\<username>\.stacher\ffprobe.exe
-```
+This prevents duplicate downloads when playlist indexes shift between runs.
 
-## Why Opus?
+OpusBox maintains a hidden track identity map inside the playlist folder:
 
-YouTube commonly serves high-quality Opus audio. Converting that audio to FLAC does not restore lost information; it only creates a larger file.
+`.opusbox-track-map.json`
 
-OpusBox therefore keeps YouTube audio as Opus.
+Successful yt-dlp downloads are also recorded in:
 
-If a genuine lossless source is available elsewhere, keeping the original FLAC is preferable.
+`.opusbox-download-map.tsv`
 
-## Resume / Sync Protection
+These files allow OpusBox to keep the local library, playlist, and yt-dlp resume archive synchronized.
 
-Each playlist folder contains:
+If duplicate video IDs are detected, OpusBox creates:
 
-```text
-.opusbox-download-archive.txt
-```
+`OpusBox-Duplicate-Tracks.txt`
 
-yt-dlp records successfully completed items in this archive.
+OpusBox does not automatically delete duplicate files.
 
-When the same playlist is run again, already archived tracks are skipped automatically. This makes OpusBox useful as an additive playlist sync tool.
+## MusicBrainz Picard Tagging
 
-**Do not delete the archive file** if you want reliable resume behavior.
+After downloading, OpusBox can send the downloaded music to MusicBrainz Picard.
 
-Removing a track from the online playlist does not currently delete the local copy.
+Large libraries are processed in sequential batches so Picard is not overloaded.
 
-## Watchdog
+The default batch size is 25 tracks.
 
-Some yt-dlp stalls are not caught by a normal socket timeout.
+Each tagging run creates its own worker files and log under:
 
-OpusBox therefore monitors completed-track progress. If no new track completes for **3 minutes**, it:
-
-1. Detects the stall.
-2. Terminates the stuck yt-dlp process.
-3. Restarts the same download.
-4. Reuses the existing download archive.
-5. Skips everything already completed.
-6. Continues from there.
-
-The watchdog allows up to **3 automatic restarts** before stopping to avoid an infinite retry loop.
+`%APPDATA%\OpusBox`
 
 Example:
 
-```text
-WATCHDOG: No completed track for 180 seconds.
-WATCHDOG: Killing stalled yt-dlp process; automatic restart 1 of 3.
-Watchdog restart 1 of 3: resuming from download archive.
-```
+`picard-queue-20260811-211628-123.log`
 
-## Progress Display
+`picard-queue-20260811-211628-123.ps1`
 
-A status such as:
+`picard-queue-20260811-211628-123-files.json`
 
-```text
-361 / 1056 tracks complete
-Latest: 531 - Hide & Seek
-```
+The log tracks each batch and ends with:
 
-contains two different values:
+`Queue complete.`
 
-- `361` is the number of successfully completed / archived tracks.
-- `531` is the original playlist position of the most recently completed file.
+when tagging has finished successfully.
 
-These values can differ because playlist entries may be unavailable, skipped, previously archived, private, deleted, or failed.
+If a queued file is missing, OpusBox logs a warning and continues processing the rest of the library instead of stopping the entire tagging job.
 
-## Failure Reporting
+## YouTube Authentication
 
-When failures are detected, OpusBox can write:
+OpusBox normally works without signing into YouTube.
 
-```text
-OpusBox-Failed-Tracks.txt
-```
+In some cases, YouTube may return:
 
-inside the playlist folder.
+`Sign in to confirm you're not a bot`
 
-Failed tracks are not added to the yt-dlp archive, so a later sync can attempt them again.
+If that happens, open:
 
-## MusicBrainz Picard
+**Advanced settings → YouTube authentication**
 
-Picard can be used to improve metadata such as:
+and use **Connect YouTube** or select an exported `cookies.txt` file.
 
-- Title
-- Artist
-- Album
-- Album artist
-- Track number
-- Release information
-- MusicBrainz IDs
-- Artwork
+OpusBox verifies the session before marking it as connected.
 
-For large mixed playlists, OpusBox avoids treating the entire playlist as one album and instead supports smaller batch-based processing.
+Authentication is only needed when YouTube requires it.
 
-## Tag Existing Music
+### If Automatic Connection Fails
 
-Use **Tag Existing Music** to process already-downloaded Opus files through the Picard workflow.
+Chrome may prevent yt-dlp from reading browser cookies because of Windows DPAPI or Chrome app-bound encryption.
 
-This is useful when:
+OpusBox will attempt Firefox as a fallback.
 
-- Automatic tagging was disabled during the original download
-- A large playlist was downloaded first and will be tagged later
-- Existing metadata needs cleanup
+If browser cookie import still fails, export a fresh Netscape-format `cookies.txt` file from a signed-in YouTube browser session and select it manually in OpusBox.
 
-## Automatic Tagging During Sync
+Treat exported cookies like a password or active login session.
 
-Before downloading, OpusBox snapshots the Opus files already present in the destination folder.
+Do not upload your cookies file to GitHub or share it with anyone.
 
-After the run, only files that are new are selected for automatic Picard processing. Existing library files do not need to be rescanned every sync.
+## Recovery and Reports
 
-## Folder Example
+If tracks remain unavailable after the automatic recovery pass, OpusBox creates:
 
-```text
-Music\
-└── Favorites tracks\
-    ├── 001 - Song Name.opus
-    ├── 002 - Another Song.opus
-    ├── ...
-    ├── .opusbox-download-archive.txt
-    └── OpusBox-Failed-Tracks.txt
-```
+`OpusBox-Failed-Tracks.txt`
 
-## Settings
+The report lists playlist entries that still do not have a corresponding local Opus file.
 
-Settings are stored under:
+Some unavailable tracks may be:
 
-```text
-%APPDATA%\OpusBox\settings.json
-```
+* deleted videos
+* private videos
+* region-restricted videos
+* videos removed from YouTube
+* videos temporarily unavailable to yt-dlp
 
-Saved values include tool paths, output location, automatic tagging preference, and whether the output folder should open after completion.
+## Requirements
 
-## Known yt-dlp / Stacher Warning
+OpusBox uses:
 
-Some systems may show a `virtual_file.log` permission warning. This does not always mean the audio download failed.
+* yt-dlp
+* FFmpeg / FFprobe
+* MusicBrainz Picard
 
-OpusBox keeps stdout and stderr separate during playlist metadata parsing so this warning does not corrupt preview data.
+The application is currently designed for Windows.
 
-## Project Structure
+## Current Version
 
-```text
-OpusBox/
-├── README.md
-├── LICENSE
-├── .gitignore
-├── src/
-│   └── OpusBox.ps1
-└── docs/
-    └── OpusBox_README.docx
-```
+**v0.3.18**
 
-Compiled Windows builds are best published through **GitHub Releases** rather than committed directly to the source tree.
+This release includes major reliability improvements for large playlists, second-pass recovery, Picard tagging, YouTube authentication, progress tracking, and duplicate prevention.
 
 ## License
 
-MIT License. See `LICENSE`.
-
-## Note
-
-OpusBox is a personal/open-source utility built with assistance from AI coding tools and iterative human testing, design, debugging, and feature decisions.
+MIT License
